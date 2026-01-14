@@ -1,0 +1,57 @@
+name: Codex - generate BCPlayers synopsis pipeline
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  codegen:
+    if: github.event.label.name == 'codegen-bcplayers'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create branch
+        run: |
+          BRANCH="codex/bcplayers-${{ github.event.issue.number }}"
+          git checkout -b "$BRANCH"
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+
+      - name: Codex generates/updates pipeline files
+        uses: openai/codex-action@v1
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        with:
+          prompt: |
+            Add a GitHub Actions runnable pipeline to:
+            - Scrape https://bcplayers.org/ and find the "Current Season" page
+            - Identify each show (title + hyperlink)
+            - Visit each show page and extract enough text for a synopsis (title, dates if present, description)
+            - Use OpenAI Responses API model "gpt-5.2" to create ONE paragraph synopsis per show in a warm, witty theater-program style (do NOT imitate a named author)
+            - Append all synopses to output/synopses.txt with clear headings and links
+            - Publish via AWS SNS to an email list (topic ARN from env var SNS_TOPIC_ARN)
+            - Script must be idempotent (overwrite output/synopses.txt each run, include a generated timestamp)
+            - Include retries/backoff for HTTP, and set a safe user-agent
+            - Create requirements.txt and scripts/bcplayers_synopsis.py
+            - Create a second workflow .github/workflows/run_bcplayers_synopsis.yml that runs on schedule and on workflow_dispatch.
+            - Include a README section about required secrets and env vars.
+
+            Use python3.11, requests, beautifulsoup4, boto3.
+            Use OPENAI_API_KEY, AWS credentials, and SNS_TOPIC_ARN from GitHub Actions secrets.
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes produced."
+            exit 0
+          fi
+          git add -A
+          git commit -m "Add BCPlayers synopsis pipeline"
+
+      - name: Push branch
+        run: |
